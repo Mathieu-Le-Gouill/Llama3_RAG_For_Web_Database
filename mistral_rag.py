@@ -10,6 +10,8 @@ from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders.merge import MergedDataLoader
+from langchain_community.document_loaders import PyPDFDirectoryLoader
 import logging
 
 logging.getLogger().setLevel(logging.ERROR)
@@ -17,28 +19,39 @@ logging.getLogger().setLevel(logging.ERROR)
 llm = Ollama(model="mistralfr")
 embeddings = OllamaEmbeddings(model="mistralfr")
 
-### Construct retriever ###
-loader = WebBaseLoader(
-    web_paths=("https://lilianweng.github.io/posts/2023-06-23-agent/",),
+
+# Open the file and read the URLs
+with open('URLlinks.txt', 'r') as file:
+    webURLs = [line.strip() for line in file.readlines()]
+
+# Construct retriever
+loader_web = WebBaseLoader(
+    web_paths=tuple(webURLs),
     bs_kwargs=dict(
         parse_only=bs4.SoupStrainer(
-            class_=("post-content", "post-title", "post-header")
+            class_=("entry-header", "entry-content")
         )
     ),
 )
-docs = loader.load()
 
+loader_pdf = PyPDFDirectoryLoader("pdf_data/")
+
+docsPDF = loader_pdf.load()
+docsWEB = loader_web.load()
+
+merged_loader = MergedDataLoader(loaders=[loader_web, loader_pdf])
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-splits = text_splitter.split_documents(docs)
-vectorstore = Chroma.from_documents(documents=splits, embedding=embeddings)
+docs = merged_loader.load_and_split(text_splitter)
+
+# Store the database on disk (only needed once) then comment it
+vectorstore = Chroma.from_documents(documents=docs, embedding=embeddings, persist_directory="/media/mathieu/Data_Storage/Programmation/DataBase/chroma_db")
+# Load from disk instead
+#vectorstore = Chroma(persist_directory="/media/mathieu/Data_Storage/Programmation/DataBase/chroma_db", embedding=embeddings)
+
 retriever = vectorstore.as_retriever()
 
-
 ### Contextualize question ###
-contextualize_q_system_prompt = """Given a chat history and the latest user question \
-which might reference context in the chat history, formulate a standalone question \
-which can be understood without the chat history. Do NOT answer the question, \
-just reformulate it if needed and otherwise return it as is."""
+contextualize_q_system_prompt = """À partir de l'historique de discussion et de la dernière question de l'utilisateur, qui pourrait faire référence au contexte de l'historique de discussion, formulez une question autonome qui peut être comprise sans l'historique de la discussion. NE répondez PAS à la question, reformulez-la simplement si nécessaire, sinon renvoyez-la telle quelle."""
 contextualize_q_prompt = ChatPromptTemplate.from_messages(
     [
         ("system", contextualize_q_system_prompt),
@@ -52,12 +65,9 @@ history_aware_retriever = create_history_aware_retriever(
 
 
 ### Answer question ###
-qa_system_prompt = """You are an assistant for question-answering tasks. \
-Use the following pieces of retrieved context to answer the question. \
-If you don't know the answer, just say that you don't know. \
-Use three sentences maximum and keep the answer concise.\
-
+qa_system_prompt = """Vous êtes un assistant pour les tâches de question-réponse. Utilisez les éléments de contexte suivants pour répondre à la question. Si vous ne connaissez pas la réponse, dites simplement que vous ne savez pas. Utilisez un maximum de trois phrases et gardez la réponse concise.\
 {context}"""
+
 qa_prompt = ChatPromptTemplate.from_messages(
     [
         ("system", qa_system_prompt),
@@ -89,7 +99,7 @@ conversational_rag_chain = RunnableWithMessageHistory(
 )
 
 while(True):
-    print("\nAsk a question or type 'exit' to quit.\n")
+    print("\nPose une question ou écris 'exit' pour arrêter.\n")
     question = input()
     if question == "exit":
         break
