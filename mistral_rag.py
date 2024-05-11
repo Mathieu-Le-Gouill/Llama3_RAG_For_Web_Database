@@ -1,52 +1,21 @@
-import bs4
 from langchain_community.llms import Ollama
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_chroma import Chroma
 from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_community.document_loaders import WebBaseLoader
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders.merge import MergedDataLoader
-from langchain_community.document_loaders import PyPDFDirectoryLoader
 import logging
 
 logging.getLogger().setLevel(logging.ERROR)
 
-llm = Ollama(model="mistralfr")
-embeddings = OllamaEmbeddings(model="mistralfr")
+llm = Ollama(model="llama3")
+embeddings = OllamaEmbeddings(model="llama3")
 
-
-# Open the file and read the URLs
-with open('URLlinks.txt', 'r') as file:
-    webURLs = [line.strip() for line in file.readlines()]
-
-# Construct retriever
-loader_web = WebBaseLoader(
-    web_paths=tuple(webURLs),
-    bs_kwargs=dict(
-        parse_only=bs4.SoupStrainer(
-            class_=("entry-header", "entry-content")
-        )
-    ),
-)
-
-loader_pdf = PyPDFDirectoryLoader("pdf_data/")
-
-docsPDF = loader_pdf.load()
-docsWEB = loader_web.load()
-
-merged_loader = MergedDataLoader(loaders=[loader_web, loader_pdf])
-text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-docs = merged_loader.load_and_split(text_splitter)
-
-# Store the database on disk (only needed once) then comment it
-vectorstore = Chroma.from_documents(documents=docs, embedding=embeddings, persist_directory="/media/mathieu/Data_Storage/Programmation/DataBase/chroma_db")
 # Load from disk instead
-#vectorstore = Chroma(persist_directory="/media/mathieu/Data_Storage/Programmation/DataBase/chroma_db", embedding=embeddings)
+vectorstore = Chroma(persist_directory="/media/mathieu/Data_Storage/Programmation/DataBase/chroma_db", embedding_function=embeddings)
 
 retriever = vectorstore.as_retriever()
 
@@ -116,4 +85,4 @@ while(True):
     for i, document in enumerate(answer["context"]):
         print("Source "+ str(i+1) + " : " + document.metadata["source"])
 
-# ex : What is Task Decomposition?
+    print(answer["context"])
