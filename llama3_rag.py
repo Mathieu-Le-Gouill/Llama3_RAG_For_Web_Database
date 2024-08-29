@@ -14,8 +14,11 @@ logging.getLogger().setLevel(logging.ERROR)
 llm = Ollama(model="llama3")
 embeddings = OllamaEmbeddings(model="llama3")
 
+# Path to the local chroma directory
+chroma_directory = "/chroma_db"
+
 # Load from disk instead
-vectorstore = Chroma(persist_directory="/media/mathieu/Data_Storage/Programmation/DataBase/chroma_db", embedding_function=embeddings)
+vectorstore = Chroma(persist_directory=chroma_directory, embedding_function=embeddings)
 
 retriever = vectorstore.as_retriever()
 
